@@ -162,6 +162,20 @@ bot.action(/buy_(.+)/, async (ctx) => {
     }
 });
 
+// --- HELP BUYRUG'I ---
+bot.help((ctx) => {
+    const adminUsername = 'misterkhabibullayev'; // Bu yerga o'zingizning @username'ingizni yozing (kuchukchasiz)
+    const text = "Assalomu alaykum, botda obuna sotib olishda yordam bering";
+    const encodedText = encodeURIComponent(text); // Matnni havola formatiga o'tkazish
+
+    ctx.reply(
+        "Botda obuna sotib olishga qiynalayotgan bo'lsangiz adminga murojaat qiling.",
+        Markup.inlineKeyboard([
+            [Markup.button.url("Admin bilan bog'lanish 👨‍💻", `https://t.me/${adminUsername}?text=${encodedText}`)]
+        ])
+    );
+});
+
 // --- MENING HISOBIM ---
 bot.hears("👤 Mening hisobim", async (ctx) => {
     try {
