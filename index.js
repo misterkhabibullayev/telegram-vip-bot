@@ -197,18 +197,19 @@ bot.on("text", async (ctx) => {
     try {
         const text = ctx.message.text;
 
-        // --- ADMIN JAVOBI (TASDIQLASH, RAD ETISH YOKI ODDIY JAVOB) ---
+        // Admin javob beryapti (Reply qilingan xabarga)
         if (ctx.from.id === ADMIN_ID && ctx.message.reply_to_message) {
             const replyTo = ctx.message.reply_to_message;
-            const caption = replyTo.caption || replyTo.text || "";
+            // Rasm ostidagi matnni yoki oddiy xabar matnini olamiz
+            const sourceText = replyTo.caption || replyTo.text || "";
 
-            // ID ni qidirish
-            const tidMatch =
-                caption.match(/ID:\s*(\d+)/) || caption.match(/🆔 ID:\s*(\d+)/);
-            const tid = tidMatch ? tidMatch[1] : null;
+            // --- ENG MUHIM QISM: ID-NI QIDIRISH ---
+            // Bu regex matn ichidan faqat 8 tadan 12 tagacha bo'lgan raqamlar ketma-ketligini qidiradi
+            const idMatch = sourceText.match(/\d{8,12}/);
+            const tid = idMatch ? idMatch[0] : null;
 
             if (tid) {
-                // 1. Agar bu rasm bo'lsa va raqam yozilgan bo'lsa - TASDIQLASH
+                // 1. To'lovni tasdiqlash (faqat raqam yuborilsa)
                 if (replyTo.photo && /^\d+$/.test(text)) {
                     const amount = parseInt(text);
                     await pool.query(
@@ -219,6 +220,7 @@ bot.on("text", async (ctx) => {
                         "INSERT INTO payments (user_id, amount) VALUES ($1, $2)",
                         [tid, amount],
                     );
+
                     bot.telegram
                         .sendMessage(
                             tid,
@@ -230,7 +232,7 @@ bot.on("text", async (ctx) => {
                     );
                 }
 
-                // 2. Agar bu rasm bo'lsa va matn yozilgan bo'lsa - RAD ETISH
+                // 2. To'lovni rad etish (rasmga reply qilib matn yozilsa)
                 else if (replyTo.photo) {
                     bot.telegram
                         .sendMessage(
@@ -238,10 +240,10 @@ bot.on("text", async (ctx) => {
                             `Siz yuborgan to'lov cheki rad etildi. ❌\n\nSabab: ${text}`,
                         )
                         .catch(() => {});
-                    return ctx.reply(`❌ ID: ${tid} ga rad xabari ketdi.`);
+                    return ctx.reply(`❌ ID: ${tid} ga rad xabari yuborildi.`);
                 }
 
-                // 3. Agar bu foydalanuvchining FIKRIga javob bo'lsa
+                // 3. Foydalanuvchi xabariga (fikriga) javob qaytarish
                 else {
                     bot.telegram
                         .sendMessage(tid, `<b>Admin javobi:</b>\n\n${text}`, {
@@ -250,10 +252,14 @@ bot.on("text", async (ctx) => {
                         .catch(() => {});
                     return ctx.reply(`📩 Javobingiz ID: ${tid} ga yuborildi.`);
                 }
+            } else {
+                return ctx.reply(
+                    "Xato: Xabar ichidan foydalanuvchi ID-sini topib bo'lmadi! ❌",
+                );
             }
         }
 
-        // --- ADMIN SESSIONLARI (SERIAL QO'SHISH VA H.K) ---
+        // --- Admin boshqa amallari (Rassilka, Serial qo'shish) ---
         if (ctx.session && ctx.from.id === ADMIN_ID) {
             const step = ctx.session.step;
             if (step === "broadcast") {
@@ -290,7 +296,7 @@ bot.on("text", async (ctx) => {
             }
         }
 
-        // --- ODDIY FOYDALANUVCHI YOZSA (FIKR BILDIRISH) ---
+        // --- Foydalanuvchi adminga xabar yuborganda ---
         if (ctx.from.id !== ADMIN_ID) {
             bot.telegram.sendMessage(
                 ADMIN_ID,
