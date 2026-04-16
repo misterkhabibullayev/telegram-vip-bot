@@ -25,7 +25,10 @@ const REQUIRED_CHANNEL = "@EshrefRuya_Yeralti";
 
 async function checkSub(ctx) {
     try {
-        const member = await ctx.telegram.getChatMember(REQUIRED_CHANNEL, ctx.from.id);
+        const member = await ctx.telegram.getChatMember(
+            REQUIRED_CHANNEL,
+            ctx.from.id,
+        );
         return ["creator", "administrator", "member"].includes(member.status);
     } catch (e) {
         return true;
@@ -50,118 +53,157 @@ bot.start(async (ctx) => {
             return ctx.reply(
                 `Botdan foydalanish uchun ${REQUIRED_CHANNEL} kanalimizga a'zo bo'ling!`,
                 Markup.inlineKeyboard([
-                    [Markup.button.url("Kanalga a'zo bo'lish", `https://t.me/${REQUIRED_CHANNEL.replace("@", "")}`)],
+                    [
+                        Markup.button.url(
+                            "Kanalga a'zo bo'lish",
+                            `https://t.me/${REQUIRED_CHANNEL.replace("@", "")}`,
+                        ),
+                    ],
                     [Markup.button.callback("Tekshirish ✅", "verify")],
                 ]),
             );
         }
-        // Foydalanuvchini bazaga qo'shish (created_at avtomatik tushadi)
-        await pool.query("INSERT INTO users (id, balance) VALUES ($1, 0) ON CONFLICT (id) DO NOTHING", [ctx.from.id]);
-        ctx.reply(ctx.from.id === ADMIN_ID ? "Xush kelibsiz, Admin!" : "Xush kelibsiz!", ctx.from.id === ADMIN_ID ? adminMenu : userMenu);
-    } catch (e) { console.error(e); }
+        await pool.query(
+            "INSERT INTO users (id, balance) VALUES ($1, 0) ON CONFLICT (id) DO NOTHING",
+            [ctx.from.id],
+        );
+        ctx.reply(
+            ctx.from.id === ADMIN_ID
+                ? "Xush kelibsiz, Admin!"
+                : "Xush kelibsiz!",
+            ctx.from.id === ADMIN_ID ? adminMenu : userMenu,
+        );
+    } catch (e) {
+        console.error(e);
+    }
 });
 
 bot.action("verify", async (ctx) => {
     if (await checkSub(ctx)) {
         await ctx.deleteMessage();
-        ctx.reply("Rahmat! Endi botdan foydalanishingiz mumkin. /start bosing.");
+        ctx.reply(
+            "Rahmat! Endi botdan foydalanishingiz mumkin. /start bosing.",
+        );
     } else {
         ctx.answerCbQuery("Hali obuna bo'lmagansiz! ❌", { show_alert: true });
     }
 });
 
-// --- 4. BOYITILGAN PROFIL VA TO'LOVLAR TARIXI ---
-bot.hears("👤 Mening hisobim", async (ctx) => {
-    try {
-        const userRes = await pool.query("SELECT balance, subscriptions, created_at FROM users WHERE id = $1", [ctx.from.id]);
-        const user = userRes.rows[0];
-        
-        // Jami sarfni hisoblash (taxminiy yoki to'lovlar tarixidan)
-        const payRes = await pool.query("SELECT SUM(amount) as total FROM payments WHERE user_id = $1", [ctx.from.id]);
-        const totalSpent = payRes.rows[0].total || 0;
-        
-        const regDate = user.created_at ? new Date(user.created_at).toLocaleDateString('uz-UZ') : "Noma'lum";
-
-        let text = `👤 **Sizning profilingiz**\n\n`;
-        text += `🆔 ID: \`${ctx.from.id}\`\n`;
-        text += `📅 Ro'yxatdan o'tgan sana: **${regDate}**\n`;
-        text += `💳 Balans: **${user.balance} so'm**\n`;
-        text += `💰 Jami to'ldirilgan: **${totalSpent} so'm**\n\n`;
-        
-        let subsText = "Obunalar yo'q.";
-        if (user.subscriptions?.length > 0) {
-            const list = await Promise.all(user.subscriptions.map(async (k) => {
-                const s = await pool.query("SELECT name FROM series WHERE key = $1", [k]);
-                return s.rows[0] ? `✅ ${s.rows[0].name}` : null;
-            }));
-            subsText = list.filter(l => l !== null).join("\n");
-        }
-        text += `🍿 **Sizning seriallaringiz:**\n${subsText}`;
-
-        ctx.replyWithMarkdown(text, Markup.inlineKeyboard([
-            [Markup.button.callback("📜 To'lovlar tarixi", "view_history")]
-        ]));
-    } catch (e) { console.error(e); }
+bot.help((ctx) => {
+    const adminUsername = "misterkhabibullayev";
+    const text = "Assalomu alaykum, botda obuna sotib olishda yordam bering";
+    const encodedText = encodeURIComponent(text);
+    ctx.reply(
+        "Botda obuna sotib olishga qiynalayotgan bo'lsangiz adminga murojaat qiling.",
+        Markup.inlineKeyboard([
+            [
+                Markup.button.url(
+                    "Admin bilan bog'lanish 👨‍💻",
+                    `https://t.me/${adminUsername}?text=${encodedText}`,
+                ),
+            ],
+        ]),
+    );
 });
 
-bot.action("view_history", async (ctx) => {
-    try {
-        const payRes = await pool.query("SELECT amount, created_at FROM payments WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10", [ctx.from.id]);
-        if (payRes.rows.length === 0) return ctx.answerCbQuery("Sizda hali to'lovlar mavjud emas.", { show_alert: true });
-
-        let historyText = "📜 **Oxirgi 10 ta to'lov:**\n\n";
-        payRes.rows.forEach((p, index) => {
-            const date = new Date(p.created_at).toLocaleDateString('uz-UZ');
-            historyText += `${index + 1}. ${date} — **${p.amount} so'm**\n`;
-        });
-
-        ctx.replyWithMarkdown(historyText);
-        ctx.answerCbQuery();
-    } catch (e) { console.error(e); }
-});
-
-// --- 5. SOTIB OLISH VA AVTOMATIK FIKR SO'RASH ---
-bot.action(/buy_(.+)/, async (ctx) => {
-    try {
-        const key = ctx.match[1];
-        const userRes = await pool.query("SELECT balance, subscriptions FROM users WHERE id = $1", [ctx.from.id]);
-        const serieRes = await pool.query("SELECT * FROM series WHERE key = $1", [key]);
-        const user = userRes.rows[0];
-        const serie = serieRes.rows[0];
-
-        if (user.subscriptions?.includes(key)) return ctx.answerCbQuery("Sizda obuna bor!", { show_alert: true });
-        if (user.balance < serie.price) return ctx.answerCbQuery("Mablag' yetarli emas! ❌", { show_alert: true });
-
-        await pool.query("UPDATE users SET balance = balance - $1, subscriptions = array_append(subscriptions, $2) WHERE id = $3", [serie.price, key, ctx.from.id]);
-        
-        ctx.editMessageText(`Muvaffaqiyatli sotib olindi! 🎉\n\n🍿 ${serie.name}\n🔗 Havola: ${serie.link}`, { link_preview_options: { is_disabled: true } });
-
-        // --- POST-REVIEW: 24 SOATDAN KEYIN FIKR SO'RASH ---
-        setTimeout(() => {
-            bot.telegram.sendMessage(ctx.from.id, 
-                `Assalomu alaykum! Kecha **${serie.name}** serialiga obuna bo'lgan edingiz. 😊\n\nSerial va botimiz xizmati sizga yoqdimi? Fikringizni shu yerga yozib yuboring (biz uchun juda muhim!)`
-            ).catch(err => console.log("Xabar yuborishda xato (foydalanuvchi botni bloklagan bo'lishi mumkin)"));
-        }, 24 * 60 * 60 * 1000); // 24 soat (millisekundlarda)
-
-        bot.telegram.sendMessage(ADMIN_ID, `💰 **Yangi Xarid!**\n\n👤: ${ctx.from.first_name}\n🆔: \`${ctx.from.id}\`\n🎬: ${serie.name}\n💸: ${serie.price} so'm`, { parse_mode: "Markdown" }).catch(() => {});
-    } catch (e) { console.error(e); }
-});
-
-// --- QOLGAN STANDART FUNKSIYALAR ---
 bot.hears("🎬 Seriallar", async (ctx) => {
     try {
         const res = await pool.query("SELECT * FROM series");
         if (res.rows.length === 0) return ctx.reply("Hozircha seriallar yo'q.");
-        const buttons = res.rows.map((s) => [Markup.button.callback(`${s.name} - ${s.price} so'm`, `buy_${s.key}`)]);
+        const buttons = res.rows.map((s) => [
+            Markup.button.callback(
+                `${s.name} - ${s.price} so'm`,
+                `buy_${s.key}`,
+            ),
+        ]);
         ctx.reply("🎬 Serialni tanlang:", Markup.inlineKeyboard(buttons));
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error(e);
+    }
+});
+
+bot.action(/buy_(.+)/, async (ctx) => {
+    try {
+        const key = ctx.match[1];
+        const userRes = await pool.query(
+            "SELECT balance, subscriptions FROM users WHERE id = $1",
+            [ctx.from.id],
+        );
+        const serieRes = await pool.query(
+            "SELECT * FROM series WHERE key = $1",
+            [key],
+        );
+        const user = userRes.rows[0];
+        const serie = serieRes.rows[0];
+
+        if (user.subscriptions?.includes(key))
+            return ctx.answerCbQuery("Sizda obuna bor!", { show_alert: true });
+        if (user.balance < serie.price)
+            return ctx.answerCbQuery("Mablag' yetarli emas! ❌", {
+                show_alert: true,
+            });
+
+        await pool.query(
+            "UPDATE users SET balance = balance - $1, subscriptions = array_append(subscriptions, $2) WHERE id = $3",
+            [serie.price, key, ctx.from.id],
+        );
+        ctx.editMessageText(
+            `Muvaffaqiyatli sotib olindi! 🎉\n\n🍿 ${serie.name}\n🔗 Havola: ${serie.link}`,
+            { link_preview_options: { is_disabled: true } },
+        );
+
+        bot.telegram
+            .sendMessage(
+                ADMIN_ID,
+                `💰 **Yangi Xarid!**\n\n👤: ${ctx.from.first_name}\n🆔: \`${ctx.from.id}\`\n🎬: ${serie.name}\n💸: ${serie.price} so'm`,
+                { parse_mode: "Markdown" },
+            )
+            .catch(() => {});
+    } catch (e) {
+        console.error(e);
+    }
+});
+
+bot.hears("👤 Mening hisobim", async (ctx) => {
+    try {
+        const res = await pool.query(
+            "SELECT balance, subscriptions FROM users WHERE id = $1",
+            [ctx.from.id],
+        );
+        const user = res.rows[0];
+        let subsText = "Obunalar yo'q.";
+        if (user.subscriptions?.length > 0) {
+            const list = await Promise.all(
+                user.subscriptions.map(async (k) => {
+                    const s = await pool.query(
+                        "SELECT name, link FROM series WHERE key = $1",
+                        [k],
+                    );
+                    return s.rows[0]
+                        ? `🔹 [${s.rows[0].name}](${s.rows[0].link})`
+                        : null;
+                }),
+            );
+            subsText = list.filter((l) => l !== null).join("\n");
+        }
+        ctx.replyWithMarkdown(
+            `💳 Balans: *${user.balance} so'm*\n\n✅ Obunalar:\n${subsText}`,
+            { link_preview_options: { is_disabled: true } },
+        );
+    } catch (e) {
+        console.error(e);
+    }
 });
 
 bot.hears("📊 Statistika", async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    const users = (await pool.query("SELECT COUNT(*) FROM users")).rows[0].count;
-    const income = (await pool.query("SELECT SUM(amount) FROM payments")).rows[0].sum || 0;
-    ctx.replyWithMarkdown(`📊 *Statistika:*\n\n👥 Foydalanuvchilar: ${users}\n💰 Daromad: ${income} so'm`);
+    const users = (await pool.query("SELECT COUNT(*) FROM users")).rows[0]
+        .count;
+    const income =
+        (await pool.query("SELECT SUM(amount) FROM payments")).rows[0].sum || 0;
+    ctx.replyWithMarkdown(
+        `📊 *Statistika:*\n\n👥 Foydalanuvchilar: ${users}\n💰 Daromad: ${income} so'm`,
+    );
 });
 
 bot.hears("📢 Rassilka", (ctx) => {
@@ -171,63 +213,111 @@ bot.hears("📢 Rassilka", (ctx) => {
 });
 
 bot.hears("💰 Hisobni to'ldirish", (ctx) => {
-    ctx.reply("Karta: 8600530431452237\nEgasi: Raxmanova M\n\n⚠️ To'lovdan so'ng chekni rasm ko'rinishida yuboring!");
+    ctx.reply(
+        "Karta: 8600530431452237\nEgasi: Raxmanova M\n\n⚠️ To'lovdan so'ng chekni rasm ko'rinishida yuboring!",
+    );
 });
 
 bot.on("photo", async (ctx) => {
     if (ctx.from.id === ADMIN_ID) return;
+
     const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-    const fullName = `${ctx.from.first_name} ${ctx.from.last_name || ""}`.trim();
+    const fullName =
+        `${ctx.from.first_name} ${ctx.from.last_name || ""}`.trim();
+
     bot.telegram.sendPhoto(ADMIN_ID, photoId, {
-        caption: `💰 **Yangi to'lov!**\n👤: **${fullName}**\n🆔: <code>${ctx.from.id}</code>\n\nSummani yozing (yoki rad sababini)`,
+        caption:
+            `💰 **Yangi to'lov!**\n\n` +
+            `👤 Foydalanuvchi: **${fullName}**\n` +
+            `🆔 ID: <code>${ctx.from.id}</code>\n\n` +
+            `Summani yozing (yoki rad sababini)`,
         parse_mode: "HTML",
     });
+
     ctx.reply("Chek yuborildi. Tasdiqlanishini kuting.");
+});
+
+bot.hears("➕ Yangi serial qo'shish", (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    ctx.session = { step: "waiting_name" };
+    ctx.reply("Serial nomi:");
 });
 
 bot.on("text", async (ctx) => {
     try {
         const text = ctx.message.text;
 
+        // --- TO'LOV TASDIQLASH/RAD ETISH ---
         if (ctx.from.id === ADMIN_ID && ctx.message.reply_to_message?.photo) {
-            const tid = ctx.message.reply_to_message.caption.match(/ID: (\d+)/)?.[1];
+            const tid =
+                ctx.message.reply_to_message.caption.match(/ID: (\d+)/)?.[1];
             if (!tid) return;
 
             if (/^\d+$/.test(text)) {
+                // Faqat raqam bo'lsa - TASDIQLASH
                 const amount = parseInt(text);
-                await pool.query("UPDATE users SET balance = balance + $1 WHERE id = $2", [amount, tid]);
-                await pool.query("INSERT INTO payments (user_id, amount) VALUES ($1, $2)", [tid, amount]);
-                bot.telegram.sendMessage(tid, `Hisobingiz ${amount} so'mga to'ldirildi! ✅`);
+                await pool.query(
+                    "UPDATE users SET balance = balance + $1 WHERE id = $2",
+                    [amount, tid],
+                );
+                await pool.query(
+                    "INSERT INTO payments (user_id, amount) VALUES ($1, $2)",
+                    [tid, amount],
+                );
+                bot.telegram.sendMessage(
+                    tid,
+                    `Hisobingiz ${amount} so'mga to'ldirildi! ✅`,
+                );
                 return ctx.reply(`ID: ${tid} balansiga ${amount} qo'shildi.`);
             } else {
-                bot.telegram.sendMessage(tid, `To'lovingiz rad etildi. ❌\nSabab: ${text}`);
-                return ctx.reply(`Rad xabari ketdi.`);
+                // Matn bo'lsa - RAD ETISH
+                bot.telegram.sendMessage(
+                    tid,
+                    `To'lovingiz rad etildi. ❌\nSabab: ${text}`,
+                );
+                return ctx.reply(`ID: ${tid} ga rad xabari ketdi.`);
             }
         }
 
-        // Fikr bildirish (Post-review) uchun adminni ogohlantirish
-        if (ctx.from.id !== ADMIN_ID && !ctx.session?.step) {
-            bot.telegram.sendMessage(ADMIN_ID, `📩 **Fikr/Xabar keldi:**\n👤: ${ctx.from.first_name}\n🆔: \`${ctx.from.id}\`\n💬: ${text}`);
-        }
-
+        // --- ADMIN SESSIONLARI ---
         if (ctx.session && ctx.from.id === ADMIN_ID) {
             const step = ctx.session.step;
             if (step === "broadcast") {
                 const users = await pool.query("SELECT id FROM users");
-                users.rows.forEach(u => bot.telegram.sendMessage(u.id, text).catch(() => {}));
-                ctx.session = null; return ctx.reply("Yuborildi!");
+                users.rows.forEach((u) =>
+                    bot.telegram.sendMessage(u.id, text).catch(() => {}),
+                );
+                ctx.session = null;
+                return ctx.reply("Xabar yuborildi!");
             } else if (step === "waiting_name") {
-                ctx.session.name = text; ctx.session.step = "waiting_key"; return ctx.reply("Kalit so'z:");
+                ctx.session.name = text;
+                ctx.session.step = "waiting_key";
+                return ctx.reply("Kalit so'z:");
             } else if (step === "waiting_key") {
-                ctx.session.key = text.toLowerCase(); ctx.session.step = "waiting_price"; return ctx.reply("Narxi:");
+                ctx.session.key = text.toLowerCase();
+                ctx.session.step = "waiting_price";
+                return ctx.reply("Narxi:");
             } else if (step === "waiting_price") {
-                ctx.session.price = parseInt(text); ctx.session.step = "waiting_link"; return ctx.reply("Link:");
+                ctx.session.price = parseInt(text);
+                ctx.session.step = "waiting_link";
+                return ctx.reply("Link:");
             } else if (step === "waiting_link") {
-                await pool.query("INSERT INTO series (key, name, price, link) VALUES ($1, $2, $3, $4)", [ctx.session.key, ctx.session.name, ctx.session.price, text]);
-                ctx.session = null; return ctx.reply("Qo'shildi! ✅", adminMenu);
+                await pool.query(
+                    "INSERT INTO series (key, name, price, link) VALUES ($1, $2, $3, $4)",
+                    [
+                        ctx.session.key,
+                        ctx.session.name,
+                        ctx.session.price,
+                        text,
+                    ],
+                );
+                ctx.session = null;
+                return ctx.reply("Qo'shildi! ✅", adminMenu);
             }
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error(e);
+    }
 });
 
 bot.launch().then(() => console.log("Bot onlayn! 🚀"));
