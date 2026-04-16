@@ -76,6 +76,7 @@ bot.hears("👤 Mening hisobim", async (ctx) => {
         const userRes = await pool.query("SELECT balance, subscriptions, created_at FROM users WHERE id = $1", [ctx.from.id]);
         const user = userRes.rows[0];
         
+        // Jami sarfni hisoblash (taxminiy yoki to'lovlar tarixidan)
         const payRes = await pool.query("SELECT SUM(amount) as total FROM payments WHERE user_id = $1", [ctx.from.id]);
         const totalSpent = payRes.rows[0].total || 0;
         
@@ -83,34 +84,24 @@ bot.hears("👤 Mening hisobim", async (ctx) => {
 
         let text = `👤 **Sizning profilingiz**\n\n`;
         text += `🆔 ID: \`${ctx.from.id}\`\n`;
-        text += `📅 Ro'yxatdan o'tgan: **${regDate}**\n`;
+        text += `📅 Ro'yxatdan o'tgan sana: **${regDate}**\n`;
         text += `💳 Balans: **${user.balance} so'm**\n`;
-        text += `💰 Jami to'lov: **${totalSpent} so'm**\n\n`;
+        text += `💰 Jami to'ldirilgan: **${totalSpent} so'm**\n\n`;
         
-        let subsText = "Hali obunalar sotib olinmagan.";
-        if (user.subscriptions && user.subscriptions.length > 0) {
+        let subsText = "Obunalar yo'q.";
+        if (user.subscriptions?.length > 0) {
             const list = await Promise.all(user.subscriptions.map(async (k) => {
-                const s = await pool.query("SELECT name, link FROM series WHERE key = $1", [k]);
-                // Serial nomi va linkini chiroyli formatda chiqaramiz
-                return s.rows[0] ? `🎬 [${s.rows[0].name}](${s.rows[0].link})` : null;
+                const s = await pool.query("SELECT name FROM series WHERE key = $1", [k]);
+                return s.rows[0] ? `✅ ${s.rows[0].name}` : null;
             }));
-            const filteredList = list.filter(l => l !== null);
-            if (filteredList.length > 0) {
-                subsText = filteredList.join("\n");
-            }
+            subsText = list.filter(l => l !== null).join("\n");
         }
-        text += `🍿 **Sizning seriallaringiz (ustiga bosing):**\n${subsText}`;
+        text += `🍿 **Sizning seriallaringiz:**\n${subsText}`;
 
-        ctx.replyWithMarkdown(text, {
-            link_preview_options: { is_disabled: true }, // Linklar ostida katta rasm chiqib ketmasligi uchun
-            ...Markup.inlineKeyboard([
-                [Markup.button.callback("📜 To'lovlar tarixi", "view_history")]
-            ])
-        });
-    } catch (e) { 
-        console.error(e);
-        ctx.reply("Profil ma'lumotlarini yuklashda xatolik yuz berdi.");
-    }
+        ctx.replyWithMarkdown(text, Markup.inlineKeyboard([
+            [Markup.button.callback("📜 To'lovlar tarixi", "view_history")]
+        ]));
+    } catch (e) { console.error(e); }
 });
 
 bot.action("view_history", async (ctx) => {
@@ -180,7 +171,7 @@ bot.hears("📢 Rassilka", (ctx) => {
 });
 
 bot.hears("💰 Hisobni to'ldirish", (ctx) => {
-    ctx.reply("Karta: 8600530431452237\nEgasi: Raxmanova M\n\n⚠️ To'lovdan so'ng chekni faqat rasm(Photo) ko'rinishida yuboring!");
+    ctx.reply("Karta: 8600530431452237\nEgasi: Raxmanova M\n\n⚠️ To'lovdan so'ng chekni rasm ko'rinishida yuboring!");
 });
 
 bot.on("photo", async (ctx) => {
