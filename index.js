@@ -51,6 +51,34 @@ const adminMenu = Markup.keyboard([
     ["🏠 Foydalanuvchi menyusi"],
 ]).resize();
 
+// --- MAJBURIY OBUNA MIDDLEWARE ---
+bot.use(async (ctx, next) => {
+    // Agar foydalanuvchi "Tekshirish" tugmasini bossa yoki start bossa, xalaqit bermaymiz
+    if (ctx.chat.type !== 'private') return next();
+    
+    // Foydalanuvchi yuborgan xabar yoki callback (tugma)
+    const text = ctx.message?.text || "";
+    const callbackData = ctx.callbackQuery?.data || "";
+
+    // Tekshirish tugmasi va start buyrug'iga ruxsat beramiz
+    if (callbackData === 'verify' || text === '/start') {
+        return next();
+    }
+
+    // Qolgan barcha holatlarda obunani tekshiramiz
+    const isSubscribed = await checkSub(ctx);
+    if (!isSubscribed) {
+        return ctx.reply(
+            `Kanalga a'zo bo'lmagansiz! ❌\nIltimos, avval @EshrefRuya_Yeralti kanaliga a'zo bo'ling, so'ngra /start bosing.`,
+            Markup.inlineKeyboard([
+                [Markup.button.url("Kanalga a'zo bo'lish", `https://t.me/EshrefRuya_Yeralti`)]
+            ])
+        );
+    }
+
+    return next(); // Agar obuna bo'lgan bo'lsa, keyingi kodlarga o'tadi
+});
+
 // --- START ---
 bot.start(async (ctx) => {
     try {
