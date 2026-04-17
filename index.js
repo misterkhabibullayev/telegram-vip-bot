@@ -248,7 +248,11 @@ bot.hears("👤 Mening hisobim", async (ctx) => {
             [ctx.from.id],
         );
         const user = res.rows[0];
-        let subsText = "Obunalar yo'q.";
+        
+        // Foydalanuvchi ismini havolali qilish
+        const userLink = `[${ctx.from.first_name}](tg://user?id=${ctx.from.id})`;
+        
+        let subsText = "_Sizda faol obunalar mavjud emas._";
         if (user.subscriptions?.length > 0) {
             const list = await Promise.all(
                 user.subscriptions.map(async (k) => {
@@ -261,14 +265,27 @@ bot.hears("👤 Mening hisobim", async (ctx) => {
                         : null;
                 }),
             );
-            subsText = list.filter((l) => l !== null).join("\n");
+            const filteredList = list.filter((l) => l !== null);
+            if (filteredList.length > 0) {
+                subsText = filteredList.join("\n");
+            }
         }
-        ctx.replyWithMarkdown(
-            `💳 Balans: *${user.balance} so'm*\n\n✅ Obunalar:\n${subsText}`,
-            { link_preview_options: { is_disabled: true } },
+
+        // Ma'lumotlarni chiroyli formatda chiqarish
+        const profileMessage = 
+            `👤 *Foydalanuvchi:* ${userLink}\n` +
+            `🆔 *Sizning ID:* \`${ctx.from.id}\`\n` +
+            `💳 *Balans:* ${user.balance} so'm\n\n` +
+            `✅ *Sizning obunalaringiz:* \n${subsText}`;
+
+        await ctx.replyWithMarkdownV2(
+            profileMessage.replace(/\./g, '\\.').replace(/-/g, '\\-').replace(/!/g, '\\!'), // MarkdownV2 belgilarini "escape" qilish
+            { disable_web_page_preview: true }
         );
+
     } catch (e) {
-        console.error(e);
+        console.error("Hisobimda xatolik:", e);
+        ctx.reply("Ma'lumotlarni yuklashda xatolik yuz berdi. ❌");
     }
 });
 
@@ -278,15 +295,6 @@ bot.hears("💰 Hisobni to'ldirish", (ctx) => {
     );
 });
 
-// bot.on("photo", async (ctx) => {
-//     if (ctx.from.id === ADMIN_ID) return;
-//     const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-//     bot.telegram.sendPhoto(ADMIN_ID, photoId, {
-//         caption: `💰 To'lov! ID: <code>${ctx.from.id}</code>\nSummani shu rasmga reply qilib yuboring.`,
-//         parse_mode: "HTML",
-//     });
-//     ctx.reply("Chek yuborildi. Tasdiqlanishini kuting.");
-// });
 bot.on("photo", async (ctx) => {
     if (ctx.from.id === ADMIN_ID) return;
 
