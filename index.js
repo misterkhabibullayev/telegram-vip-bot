@@ -166,7 +166,7 @@ bot.action("verify", async (ctx) => {
     }
 });
 
-// Help (Shu yerga ko'chiring!)
+// Help
 bot.help((ctx) => {
     const adminUsername = 'misterkhabibullayev';
     const text = "Assalomu alaykum, botda obuna sotib olishda yordam bering";
@@ -178,6 +178,46 @@ bot.help((ctx) => {
             [Markup.button.url("Admin bilan bog'lanish 👨‍💻", `https://t.me/${adminUsername}?text=${encodedText}`)]
         ])
     );
+});
+
+// --- ADMIN: BALANSNI MASOFAVIY BOSHQARISH ---
+bot.command("set", async (ctx) => {
+    // Faqat admin ishlata olishi uchun tekshiruv
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    try {
+        const args = ctx.message.text.split(" "); // Buyruqni qismlarga bo'lamiz
+
+        // Format: /set balance 12345678 50000
+        if (args.length === 4 && args[1] === "balance") {
+            const tid = args[2];      // Foydalanuvchi ID
+            const amount = parseInt(args[3]); // Yangi balans miqdori
+
+            if (isNaN(amount)) {
+                return ctx.reply("❌ Xato: Summa raqam bo'lishi kerak.");
+            }
+
+            // Bazada balansni yangilash (SET buyrug'i hisobni aynan o'sha raqamga tenglaydi)
+            const res = await pool.query(
+                "UPDATE users SET balance = $1 WHERE id = $2 RETURNING id",
+                [amount, tid]
+            );
+
+            if (res.rowCount > 0) {
+                // Foydalanuvchini ogohlantirish (ixtiyoriy)
+                bot.telegram.sendMessage(tid, `Sizning balansingiz admin tomonidan yangilandi. ✅\nJoriy balans: ${amount} so'm`).catch(() => {});
+                
+                return ctx.reply(`✅ Muvaffaqiyatli: ID ${tid} balansi ${amount} so'mga o'zgartirildi.`);
+            } else {
+                return ctx.reply("❌ Xato: Bunday ID dagi foydalanuvchi topilmadi.");
+            }
+        } else {
+            return ctx.reply("ℹ️ To'g'ri format:\n`/set balance [ID] [SUMMA]`\n\nMisol:\n`/set balance 8553587912 0` (hisobni nol qilish)\n`/set balance 8553587912 50000` (hisobni 50 ming qilish)", { parse_mode: "Markdown" });
+        }
+    } catch (e) {
+        console.error("Admin set command error:", e);
+        ctx.reply("Xatolik yuz berdi. ❌");
+    }
 });
 
 // --- SERIALAR ---
