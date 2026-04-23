@@ -290,8 +290,8 @@ bot.hears("👤 Mening hisobim", async (ctx) => {
         const user = res.rows[0];
         
         // Foydalanuvchi ismini havolali qilish
-        const userLink = `[${ctx.from.first_name}](tg://user?id=${ctx.from.id})`;
-        
+        // const userLink = `[${ctx.from.first_name}](tg://user?id=${ctx.from.id})`;
+        const userLink = `<a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>`;
         let subsText = "_Sizda faol obunalar mavjud emas._";
         if (user.subscriptions?.length > 0) {
             const list = await Promise.all(
@@ -331,7 +331,7 @@ bot.hears("👤 Mening hisobim", async (ctx) => {
 
 bot.hears("💰 Hisobni to'ldirish", (ctx) => {
     ctx.reply(
-        "Pastdagi kartalardan istaganizga to'lov qilishiz mumkin 👇\n\nInfinBank: 8600530431452237\nKarta egasi: Raxmanova M\nUzumBank: 4916990329953357\nKarta egasi: Khabibullayev I\n\n⚠️ Eslatma: To'lovni qilib chekni rasm(Photo) ko'rinishida jo'nating!",
+        "Pastdagi kartaga to'lov qilishiz mumkin 👇\n\nInfinBank: 8600530431452237\nKarta egasi: Raxmanova M\n\n⚠️ Eslatma: To'lovni qilib chekni rasm(Photo) ko'rinishida jo'nating!",
     );
 });
 
