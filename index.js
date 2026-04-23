@@ -817,8 +817,7 @@ bot.hears("👤 Mening hisobim", async (ctx) => {
             [ctx.from.id],
         );
         const user = res.rows[0]; // Foydalanuvchi ismini havolali qilish
-        // const userLink = `[${ctx.from.first_name}](tg://user?id=${ctx.from.id})`;
-        const userLink = `<a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>`;
+        const userLink = `[${ctx.from.first_name}](tg://user?id=${ctx.from.id})`;
         let subsText = "_Sizda faol obunalar mavjud emas._";
         if (user.subscriptions?.length > 0) {
             const list = await Promise.all(
