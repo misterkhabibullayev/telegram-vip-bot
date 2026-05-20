@@ -133,7 +133,18 @@ bot.hears("⚙️ Texnik ishlar (ON/OFF)", async (ctx) => {
                     u.id,
                     "✅ Texnik ishlar tugadi! Botdan bemalol foydalanishingiz mumkin.",
                 )
-                .catch(() => {});
+                .catch(async (error) => {
+                    // Agar foydalanuvchi botni bloklagan bo'lsa, bazada yangilaymiz
+                    if (
+                        error.description ===
+                        "Forbidden: bot was blocked by the user"
+                    ) {
+                        await pool.query(
+                            "UPDATE users SET status = 'blocked' WHERE id = $1",
+                            [u.id],
+                        );
+                    }
+                });
         });
     }
 });
@@ -157,8 +168,9 @@ bot.start(async (ctx) => {
             );
         }
 
+        // Foydalanuvchi bazaga qo'shilganda yoki qayta start bosganda statusini 'active' qilamiz
         await pool.query(
-            "INSERT INTO users (id, balance) VALUES ($1, 0) ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO users (id, balance, status) VALUES ($1, 0, 'active') ON CONFLICT (id) DO UPDATE SET status = 'active'",
             [ctx.from.id],
         );
         ctx.reply(
@@ -231,7 +243,17 @@ bot.command("set", async (ctx) => {
                         tid,
                         `Sizning balansingiz admin tomonidan yangilandi. ✅\nJoriy balans: ${amount} so'm`,
                     )
-                    .catch(() => {});
+                    .catch(async (error) => {
+                        if (
+                            error.description ===
+                            "Forbidden: bot was blocked by the user"
+                        ) {
+                            await pool.query(
+                                "UPDATE users SET status = 'blocked' WHERE id = $1",
+                                [tid],
+                            );
+                        }
+                    });
                 return ctx.reply(
                     `✅ Muvaffaqiyatli: ID ${tid} balansi ${amount} so'mga o'zgartirildi.`,
                 );
@@ -363,6 +385,28 @@ bot.hears("👤 Mening hisobim", async (ctx) => {
 });
 
 bot.hears("💰 Hisobni to'ldirish", (ctx) => {
+    const userIdStr = String(ctx.from.id);
+
+    // Agar foydalanuvchi ID-si 8 tadan kam bo'lsa (eski akkauntlar uchun)
+    if (userIdStr.length < 8) {
+        const adminUsername = "misterkhabibullayev";
+        const text = `Assalomu alaykum. Mening Telegram ID-m 8 xonadan kam (${ctx.from.id}). Balansimni to'ldirishda yordam bering.`;
+        const encodedText = encodeURIComponent(text);
+
+        return ctx.reply(
+            "⚠️ Kechirasiz, sizning Telegram akkauntingiz juda eski (ID 8 xonadan kam) bo'lganligi sababli avtomatlashtirilgan to'lov tizimidan foydalana olmaysiz.\n\nHisobingizni to'ldirish uchun iltimos, to'g'ridan-to'g'ri adminga murojaat qiling. Admin hisobingizni qo'lda to'ldirib beradi. 🛠️",
+            Markup.inlineKeyboard([
+                [
+                    Markup.button.url(
+                        "Adminga murojaat qilish 👨‍💻",
+                        `https://t.me/${adminUsername}?text=${encodedText}`,
+                    ),
+                ],
+            ]),
+        );
+    }
+
+    // ID 8 xona yoki undan ko'p bo'lgan oddiy foydalanuvchilar uchun standart xabar
     ctx.reply(
         "Pastdagi kartaga to'lov qilishiz mumkin 👇\n\nInfinBank: 8600530431452237\nKarta egasi: Raxmanova M\n\n⚠️ Eslatma: To'lovni qilib chekni rasm(Photo) ko'rinishida jo'nating!",
     );
@@ -401,16 +445,72 @@ bot.on("photo", async (ctx) => {
     }
 });
 
-// --- BOSHQA ADMIN FUNKSIYALARI ---
+// --- YANGILANGAN VA MUKAMMAL STATISTIKA BO'LIMI ---
 bot.hears("📊 Statistika", async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    const users = (await pool.query("SELECT COUNT(*) FROM users")).rows[0]
-        .count;
-    const income =
-        (await pool.query("SELECT SUM(amount) FROM payments")).rows[0].sum || 0;
-    ctx.replyWithMarkdown(
-        `📊 *Bot Statistikasi:*\n\n👥 Foydalanuvchilar: ${users} ta\n💰 *Umumiy daromad:* ${income} so'm`,
-    );
+
+    try {
+        // 1. Umumiy foydalanuvchilar
+        const totalUsersRes = await pool.query("SELECT COUNT(*) FROM users");
+        const totalUsers = totalUsersRes.rows[0].count;
+
+        // 2. Faol foydalanuvchilar (status = 'active')
+        const activeUsersRes = await pool.query(
+            "SELECT COUNT(*) FROM users WHERE status = 'active'",
+        );
+        const activeUsers = activeUsersRes.rows[0].count;
+
+        // 3. Botni bloklaganlar (status = 'blocked')
+        const blockedUsersRes = await pool.query(
+            "SELECT COUNT(*) FROM users WHERE status = 'blocked'",
+        );
+        const blockedUsers = blockedUsersRes.rows[0].count;
+
+        // 4. Esref Ruya sotib olganlar (array ichida 'esref_ruya' borlar)
+        const esrefRes = await pool.query(
+            "SELECT COUNT(*) FROM users WHERE 'esref_ruya' = ANY(subscriptions)",
+        );
+        const esrefCount = esrefRes.rows[0].count;
+
+        // 5. Yeralti sotib olganlar (array ichida 'yeralti' borlar)
+        const yeraltiRes = await pool.query(
+            "SELECT COUNT(*) FROM users WHERE 'yeralti' = ANY(subscriptions)",
+        );
+        const yeraltiCount = yeraltiRes.rows[0].count;
+
+        // 6. Esref Ruya uzb tilda sotib olganlar (array ichida 'esref_ruya_uzb' borlar)
+        const esrefUzbRes = await pool.query(
+            "SELECT COUNT(*) FROM users WHERE 'esref_ruya_uzb' = ANY(subscriptions)",
+        );
+        const esrefUzbCount = esrefUzbRes.rows[0].count;
+
+        // 7. Umumiy daromad (Har bir serial narxidan kelib chiqib avtomat hisoblaydi)
+        // Agarda serial narxlari boshqacha bo'lsa, pastdagi 15000 va 20000 larni o'zgartirishingiz mumkin
+        const incomeRes = await pool.query(`
+            SELECT COALESCE(SUM(
+                (CASE WHEN 'esref_ruya' = ANY(subscriptions) THEN 15000 ELSE 0 END) +
+                (CASE WHEN 'yeralti' = ANY(subscriptions) THEN 20000 ELSE 0 END) +
+                (CASE WHEN 'esref_ruya_uzb' = ANY(subscriptions) THEN 15000 ELSE 0 END)
+            ), 0) as total_income FROM users
+        `);
+        const totalIncome = incomeRes.rows[0].total_income;
+
+        // Siz so'ragan aniq formatda xabarni tayyorlash
+        const statMessage =
+            `📊 **Bot Statistikasi:**\n\n` +
+            `👥 Foydalanuvchilar — **${totalUsers}** ta\n` +
+            `🟢 Faol foydalanuvchilar — **${activeUsers}** ta\n` +
+            `🔴 Botni bloklagan foydalanuvchilar — **${blockedUsers}** ta\n\n` +
+            `🎬 Esref Ruya sotib olganlar — **${esrefCount}** ta\n` +
+            `🎬 Yeralti sotib olganlar — **${yeraltiCount}** ta\n` +
+            `🎬 Esref Ruya uzb tilda sotib olganlar — **${esrefUzbCount}** ta\n\n` +
+            `💰 Umumiy daromadi — **${Number(totalIncome).toLocaleString("uz-UZ")} so'm**`;
+
+        await ctx.replyWithMarkdown(statMessage);
+    } catch (e) {
+        console.error("Statistika yuklashda xatolik:", e);
+        ctx.reply("Statistikani hisoblashda xatolik yuz berdi. ❌");
+    }
 });
 
 bot.hears("📢 Rassilka", (ctx) => {
@@ -468,7 +568,17 @@ bot.on("text", async (ctx) => {
                             tid,
                             `Hisobingiz ${amount} so'mga to'ldirildi! ✅`,
                         )
-                        .catch(() => {});
+                        .catch(async (error) => {
+                            if (
+                                error.description ===
+                                "Forbidden: bot was blocked by the user"
+                            ) {
+                                await pool.query(
+                                    "UPDATE users SET status = 'blocked' WHERE id = $1",
+                                    [tid],
+                                );
+                            }
+                        });
                     return ctx.reply(
                         `✅ ID: ${tid} balansiga ${amount} so'm qo'shildi.`,
                     );
@@ -484,7 +594,17 @@ bot.on("text", async (ctx) => {
                             `Siz yuborgan to'lov cheki rad etildi. ❌\n\n<b>Sabab:</b> ${text}`,
                             { parse_mode: "HTML" },
                         )
-                        .catch(() => {});
+                        .catch(async (error) => {
+                            if (
+                                error.description ===
+                                "Forbidden: bot was blocked by the user"
+                            ) {
+                                await pool.query(
+                                    "UPDATE users SET status = 'blocked' WHERE id = $1",
+                                    [tid],
+                                );
+                            }
+                        });
                     return ctx.reply(
                         `❌ ID: ${tid} ga rad xabari yuborildi.\n\nSabab: ${text}`,
                     );
@@ -501,7 +621,19 @@ bot.on("text", async (ctx) => {
             if (step === "broadcast") {
                 const users = await pool.query("SELECT id FROM users");
                 users.rows.forEach((u) =>
-                    bot.telegram.sendMessage(u.id, text).catch(() => {}),
+                    bot.telegram
+                        .sendMessage(u.id, text)
+                        .catch(async (error) => {
+                            if (
+                                error.description ===
+                                "Forbidden: bot was blocked by the user"
+                            ) {
+                                await pool.query(
+                                    "UPDATE users SET status = 'blocked' WHERE id = $1",
+                                    [u.id],
+                                );
+                            }
+                        }),
                 );
                 ctx.session = null;
                 return ctx.reply(
