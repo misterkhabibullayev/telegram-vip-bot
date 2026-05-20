@@ -468,7 +468,7 @@ bot.hears("📊 Statistika", async (ctx) => {
 
         // 4. Esref Ruya sotib olganlar (array ichida 'esref_ruya' borlar)
         const esrefRes = await pool.query(
-            "SELECT COUNT(*) FROM users WHERE 'esref_ruya' = ANY(subscriptions)",
+            "SELECT COUNT(*) FROM users WHERE 'eshrefruya' = ANY(subscriptions)",
         );
         const esrefCount = esrefRes.rows[0].count;
 
@@ -480,7 +480,7 @@ bot.hears("📊 Statistika", async (ctx) => {
 
         // 6. Esref Ruya uzb tilda sotib olganlar (array ichida 'esref_ruya_uzb' borlar)
         const esrefUzbRes = await pool.query(
-            "SELECT COUNT(*) FROM users WHERE 'esref_ruya_uzb' = ANY(subscriptions)",
+            "SELECT COUNT(*) FROM users WHERE 'esref_uzb_tilda' = ANY(subscriptions)",
         );
         const esrefUzbCount = esrefUzbRes.rows[0].count;
 
@@ -488,9 +488,9 @@ bot.hears("📊 Statistika", async (ctx) => {
         // Agarda serial narxlari boshqacha bo'lsa, pastdagi 15000 va 20000 larni o'zgartirishingiz mumkin
         const incomeRes = await pool.query(`
             SELECT COALESCE(SUM(
-                (CASE WHEN 'esref_ruya' = ANY(subscriptions) THEN 15000 ELSE 0 END) +
-                (CASE WHEN 'yeralti' = ANY(subscriptions) THEN 20000 ELSE 0 END) +
-                (CASE WHEN 'esref_ruya_uzb' = ANY(subscriptions) THEN 15000 ELSE 0 END)
+                (CASE WHEN 'eshrefruya' = ANY(subscriptions) THEN 10000 ELSE 0 END) +
+                (CASE WHEN 'yeralti' = ANY(subscriptions) THEN 10000 ELSE 0 END) +
+                (CASE WHEN 'esref_uzb_tilda' = ANY(subscriptions) THEN 10000 ELSE 0 END)
             ), 0) as total_income FROM users
         `);
         const totalIncome = incomeRes.rows[0].total_income;
